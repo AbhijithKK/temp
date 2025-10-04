@@ -1,0 +1,34 @@
+{
+  "name": "livekit-example",
+  "version": "1.0.0",
+  "description": "testing livekit server",
+  "main": "server.js",
+  "scripts": {
+    "debug": "DEBUG=* nodemon server",
+    "dev": "nodemon -L app",
+    "start": "nodemon server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rabee05/livekit-example.git"
+  },
+  "author": "Rabee Zyoud",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/rabee05/livekit-example/issues"
+  },
+  "homepage": "https://github.com/rabee05/livekit-example#readme",
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.9",
+    "express": "^4.18.2",
+    "livekit-server-sdk": "^2.0.3",
+    "mongoose": "^8.19.0"
+  },
+  "type": "module",
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
