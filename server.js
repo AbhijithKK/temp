@@ -12,7 +12,8 @@ import MeetLink from "./Models/MeetLink.js";
 import Participant from "./Models/ParticipentScheema.js";
 import morgan from "morgan";
 import authMiddleware from "./Helpers/AuthMiddleware.js";
-
+import { configDotenv } from "dotenv";
+configDotenv()
 const pendingRequests = new Map();
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
