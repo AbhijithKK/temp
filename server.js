@@ -26,12 +26,17 @@ const port = process.env.PORT || 3000;
 // ✅ Socket.IO Setup
 const io = new Server(server, {
   cors: {
-    origin: process.env.PROD_URL1 || "http://localhost:8000",
+    origin: [
+      "https://meet.ixes.ai",
+      "https://ixes.ai",
+      "http://localhost:5173",
+      "http://localhost:8000"
+    ],
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  path: "/socket.io", // 👈 important! must match Nginx path
 });
-
 // Store socket connections by user ID
 const userSockets = new Map();
 const hostSockets = new Map(); // Separate map for hosts by meeting ID
@@ -95,6 +100,10 @@ io.on("connection", (socket) => {
 
       // Store the pending request
       const requestId = `${meetingId}-${userId}`;
+      if (pendingRequests.has(requestId)) {
+        console.log("Join request already pending:", requestId);
+        return;
+      }
       pendingRequests.set(requestId, {
         id: requestId,
         name,
@@ -172,6 +181,31 @@ io.on("connection", (socket) => {
       console.log(`Participant ${request.name} rejected for meeting ${meetingId}`);
     } catch (error) {
       console.error("Error rejecting participant:", error);
+    }
+  });
+
+  socket.on("cancel-join-request", (data) => {
+    const { meetingId, userId } = data;
+    
+    try {
+      const requestId = `${meetingId}-${userId}`;
+      
+      if (pendingRequests.has(requestId)) {
+        // Remove from pending requests
+        pendingRequests.delete(requestId);
+        
+        // Notify host that request was cancelled
+        const hostSocketId = hostSockets.get(meetingId);
+        console.log('hostSocketId',hostSocketId);
+        
+        if (hostSocketId) {
+          io.to(hostSocketId).emit("participant-cancelled", requestId);
+        }
+        
+        console.log(`Join request cancelled by user ${userId} for meeting ${meetingId}`);
+      }
+    } catch (error) {
+      console.error("Error cancelling join request:", error);
     }
   });
 
@@ -274,6 +308,9 @@ console.log(name, meetingId, userId);
 
     // Store the pending request
     const requestId = `${meetingId}-${userId}`;
+    if (pendingRequests.has(requestId)) {
+      return res.status(200).json({ success: true, approved: false, message: "Already requested" });
+    }
     pendingRequests.set(requestId, {
       id: requestId,
       name,
