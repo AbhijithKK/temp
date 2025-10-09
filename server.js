@@ -13,6 +13,7 @@ import Participant from "./Models/ParticipentScheema.js";
 import morgan from "morgan";
 import authMiddleware from "./Helpers/AuthMiddleware.js";
 import { configDotenv } from "dotenv";
+import recordingRours from './controlers/recordingController.js'
 configDotenv()
 const pendingRequests = new Map();
 dotenv.config();
@@ -46,6 +47,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(express.urlencoded({ extended: false }));
 app.use(morgan('dev'));
+app.use('/',recordingRours)
 
 // ✅ MongoDB Connection
 mongoose
