@@ -4,6 +4,7 @@ const participantSchema = new mongoose.Schema({
   meetingId: { type: String, required: true }, // linkId from MeetLink
   userId: { type: String },
   name: { type: String },
+  filename: { type: String },
   isRecording: { type: Boolean, default: false },
   recordingId: { type: String, },
   recordingStartTime: { type: Date, default: Date.now },

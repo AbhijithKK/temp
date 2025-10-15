@@ -95,7 +95,7 @@ io.on("connection", (socket) => {
   // Handle join requests from participants
   socket.on("join-request", async (data) => {
     const { name, meetingId, userId } = data;
-    
+    socket.join(meetingId)
     try {
       const meet = await MeetLink.findOne({ linkId: meetingId });
       if (!meet) return;
@@ -210,6 +210,12 @@ io.on("connection", (socket) => {
       console.error("Error cancelling join request:", error);
     }
   });
+// When host starts or stops recording
+// socket.on("recording-state-changed", ({ meetingId, isRecording }) => {
+//   console.log('rec',meetingId, isRecording);
+  
+//   io.to(meetingId).emit("update-recording-state", { isRecording });
+// });
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
