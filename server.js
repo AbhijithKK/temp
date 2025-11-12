@@ -16,6 +16,7 @@ import { configDotenv } from "dotenv";
 import recordingRours from './controlers/recordingController.js'
 configDotenv()
 const pendingRequests = new Map();
+const chatHistory = new Map();
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,11 +37,10 @@ const io = new Server(server, {
     methods: ["GET", "POST"],
     credentials: true
   },
-  path: "/socket.io", // 👈 important! must match Nginx path
+  path: "/socket.io", 
 });
-// Store socket connections by user ID
 const userSockets = new Map();
-const hostSockets = new Map(); // Separate map for hosts by meeting ID
+const hostSockets = new Map(); 
 
 app.use(cors());
 app.use(express.json());
@@ -49,7 +49,6 @@ app.use(express.urlencoded({ extended: false }));
 app.use(morgan('dev'));
 app.use('/',recordingRours)
 
-// ✅ MongoDB Connection
 mongoose
   .connect(process.env.DATABASE_URL, {
     useNewUrlParser: true,
@@ -58,11 +57,9 @@ mongoose
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB Error:", err));
 
-// ✅ Socket.IO Connection Handling
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // Join user to their personal room
   socket.on("join-user", (userId) => {
     userSockets.set(userId, socket.id);
     socket.userId = userId;
@@ -70,7 +67,6 @@ io.on("connection", (socket) => {
     console.log(`User ${userId} joined their room`);
   });
 
-  // Join host to meeting room
   socket.on("join-meeting-host", async (meetingId, userId) => {
     try {
       console.log(meetingId,userId,'join j=host');
@@ -83,7 +79,6 @@ io.on("connection", (socket) => {
         socket.join(meetingId);
         console.log(`Host ${userId} joined meeting ${meetingId}`);
         
-        // Send current pending requests to the host
         const requests = getPendingRequestsForMeeting(meetingId);
         socket.emit("pending-requests-update", requests);
       }
@@ -92,7 +87,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Handle join requests from participants
   socket.on("join-request", async (data) => {
     const { name, meetingId, userId } = data;
     socket.join(meetingId)
@@ -100,7 +94,6 @@ io.on("connection", (socket) => {
       const meet = await MeetLink.findOne({ linkId: meetingId });
       if (!meet) return;
 
-      // Store the pending request
       const requestId = `${meetingId}-${userId}`;
       if (pendingRequests.has(requestId)) {
         console.log("Join request already pending:", requestId);
@@ -114,7 +107,6 @@ io.on("connection", (socket) => {
         timestamp: Date.now()
       });
 
-      // Notify host about the new request
       const hostSocketId = hostSockets.get(meetingId);
       console.log(hostSocketId,'hostSocketId');
       
@@ -134,7 +126,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Handle approval from host
   socket.on("approve-participant", async (requestId) => {
     try {
       const request = pendingRequests.get(requestId);
@@ -142,16 +133,13 @@ io.on("connection", (socket) => {
 
       const { userId, meetingId } = request;
       
-      // Remove from pending requests
       pendingRequests.delete(requestId);
 
-      // Notify the participant they've been approved
       const userSocketId = userSockets.get(userId);
       if (userSocketId) {
         io.to(`user-${userId}`).emit("join-approved", { meetingId });
       }
 
-      // Update all hosts in the meeting
       io.to(meetingId).emit("participant-approved", requestId);
 
       console.log(`Participant ${request.name} approved for meeting ${meetingId}`);
@@ -160,7 +148,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Handle rejection from host
   socket.on("reject-participant", (requestId) => {
     try {
       const request = pendingRequests.get(requestId);
@@ -168,16 +155,13 @@ io.on("connection", (socket) => {
 
       const { userId, meetingId } = request;
       
-      // Remove from pending requests
       pendingRequests.delete(requestId);
 
-      // Notify the participant they've been rejected
       const userSocketId = userSockets.get(userId);
       if (userSocketId) {
         io.to(`user-${userId}`).emit("join-rejected", { meetingId });
       }
 
-      // Update all hosts in the meeting
       io.to(meetingId).emit("participant-rejected", requestId);
 
       console.log(`Participant ${request.name} rejected for meeting ${meetingId}`);
@@ -193,10 +177,8 @@ io.on("connection", (socket) => {
       const requestId = `${meetingId}-${userId}`;
       
       if (pendingRequests.has(requestId)) {
-        // Remove from pending requests
         pendingRequests.delete(requestId);
         
-        // Notify host that request was cancelled
         const hostSocketId = hostSockets.get(meetingId);
         console.log('hostSocketId',hostSocketId);
         
@@ -216,23 +198,76 @@ io.on("connection", (socket) => {
   
 //   io.to(meetingId).emit("update-recording-state", { isRecording });
 // });
+const addMessageToChatHistory = (meetingId, message) => {
+  if (!chatHistory.has(meetingId)) {
+    chatHistory.set(meetingId, []);
+  }
+  const messages = chatHistory.get(meetingId);
+  messages.push({
+    ...message,
+    id: message.id || Date.now().toString(),
+    timestamp: message.timestamp || Date.now()
+  });
+  
+  // Limit chat history to last 100 messages per meeting
+  if (messages.length > 100) {
+    messages.shift();
+  }
+  
+  chatHistory.set(meetingId, messages);
+};
+const getChatHistory = (meetingId) => {
+  return chatHistory.get(meetingId) || [];cleanupChatHistory
+};
+
+const removeChatHistory = (meetingId) => {
+  chatHistory.delete(meetingId);
+};
+socket.on('join-chat', (data) => {
+  const { meetingId, userId, username } = data;
+  socket.join(`chat-${meetingId}`);
+  
+  socket.to(`chat-${meetingId}`).emit('user-joined', { username });
+});
+
+socket.on('send-message', (messageData) => {
+  const { meetingId, ...message } = messageData;
+  
+  addMessageToChatHistory(meetingId, message);
+  
+  io.to(`chat-${meetingId}`).emit('new-message', message);
+});
+
+socket.on('get-chat-history', (meetingId) => {
+  const messages = getChatHistory(meetingId);
+  socket.emit('chat-history', messages);
+});
+
+
+
+function cleanupChatHistory(meetingId) {
+  removeChatHistory(meetingId);
+}
+
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
     
-    // Clean up user sockets
     if (socket.userId) {
       userSockets.delete(socket.userId);
     }
     
-    // Clean up host sockets
     if (socket.meetingId) {
       hostSockets.delete(socket.meetingId);
+      const room = io.sockets.adapter.rooms.get(socket.meetingId);
+    if (!room || room.size === 0) {
+      console.log(`All users disconnected from meeting ${socket.meetingId}. Cleaning up chat history...`);
+      cleanupChatHistory(socket.meetingId);
+    }
     }
   });
 });
 
-// Helper function to get pending requests for a meeting
 function getPendingRequestsForMeeting(meetingId) {
   const requests = [];
   for (const [key, value] of pendingRequests.entries()) {
@@ -243,7 +278,6 @@ function getPendingRequestsForMeeting(meetingId) {
   return requests;
 }
 
-// ✅ Token Creator
 const createToken = async (participantName, roomId, isAdmin = false) => {
   const at = new AccessToken(
     process.env.LIVEKIT_API_KEY,
@@ -257,7 +291,6 @@ const createToken = async (participantName, roomId, isAdmin = false) => {
   return await at.toJwt();
 };
 
-// ✅ Token Endpoint with Approval Logic
 app.get("/get-token", authMiddleware, async (req, res) => {
   const { name, meetingId, userId } = req.query;
 
@@ -286,9 +319,7 @@ app.post("/kick", authMiddleware, async (req, res) => {
   res.json({ message: "Participant removed" });
 });
 
-// Store pending join requests
 
-// Request to join endpoint
 app.post("/request-join", authMiddleware, async (req, res) => {
   const { name, meetingId, userId } = req.body;
 console.log(name, meetingId, userId);
@@ -302,11 +333,9 @@ console.log(name, meetingId, userId);
       });
     }
 
-    // Check if user is host
     const isHost = meet.hostId.toString() === userId.toString();
     
     if (isHost) {
-      // Host is auto-approved
       return res.status(200).json({ 
         success: true, 
         approved: true,
@@ -314,7 +343,6 @@ console.log(name, meetingId, userId);
       });
     }
 
-    // Store the pending request
     const requestId = `${meetingId}-${userId}`;
     if (pendingRequests.has(requestId)) {
       return res.status(200).json({ success: true, approved: false, message: "Already requested" });
@@ -327,7 +355,6 @@ console.log(name, meetingId, userId);
       timestamp: Date.now()
     });
 
-    // Notify host via Socket.IO
     const hostSocketId = hostSockets.get(meetingId);
     if (hostSocketId) {
       io.to(hostSocketId).emit("new-join-request", {
@@ -354,7 +381,6 @@ console.log(name, meetingId, userId);
   }
 });
 
-// Check approval status
 app.get("/check-approval", authMiddleware, async (req, res) => {
   const { meetingId, userId } = req.query;
 
@@ -367,12 +393,10 @@ app.get("/check-approval", authMiddleware, async (req, res) => {
       });
     }
 
-    // Host is always approved
     if (meet.hostId.toString() === userId.toString()) {
       return res.json({ approved: true });
     }
 
-    // Check if this user has a pending request
     const requestId = `${meetingId}-${userId}`;
     const hasPendingRequest = pendingRequests.has(requestId);
 
@@ -387,7 +411,6 @@ app.get("/check-approval", authMiddleware, async (req, res) => {
   }
 });
 
-// Get pending requests (for host)
 app.get("/pending-requests", authMiddleware, async (req, res) => {
   const { meetingId } = req.query;
 
@@ -403,7 +426,6 @@ app.get("/pending-requests", authMiddleware, async (req, res) => {
   }
 });
 
-// Approve participant
 app.post("/approve-participant", authMiddleware, async (req, res) => {
   const { requestId } = req.body;
 
@@ -412,7 +434,6 @@ app.post("/approve-participant", authMiddleware, async (req, res) => {
     if (request) {
       pendingRequests.delete(requestId);
       
-      // Notify participant via Socket.IO
       const userSocketId = userSockets.get(request.userId);
       if (userSocketId) {
         io.to(`user-${request.userId}`).emit("join-approved", { 
@@ -420,7 +441,6 @@ app.post("/approve-participant", authMiddleware, async (req, res) => {
         });
       }
 
-      // Notify host
       io.to(`host-${request.meetingId}`).emit("participant-approved", requestId);
 
       res.json({ success: true, message: "Participant approved" });
@@ -439,5 +459,4 @@ app.post("/approve-participant", authMiddleware, async (req, res) => {
   }
 });
 
-// Update server startup
 server.listen(port, () => console.log(`Server running on port ${port}`));
