@@ -1,4 +1,5 @@
 const userSocketMap = {}; // userId => socketId
+const busyUsers = {};      // userId → true/false
 
 export default function setupVideoCall(io) {
   const videoIO = io.of('/videocall');
@@ -14,14 +15,22 @@ export default function setupVideoCall(io) {
     
     socket.on("initiate-video-call", (data) => {
       const { roomName, callerId, callerName, receiverId } = data;
-
+      if (busyUsers[receiverId]) {
+        const callerSocket = userSocketMap[callerId];
+        if (callerSocket) {
+          videoIO.to(callerSocket).emit("user-busy", {
+            message: "User is currently in another call",
+          });
+        }
+        return;
+      }
       const receiverSocket = userSocketMap[receiverId];
 
       if (!receiverSocket) {
         socket.emit("user-offline", "User is offline");
         return;
       }
-
+      busyUsers[callerId] = true;
       videoIO.to(receiverSocket).emit("incoming-video-call", {
         roomName,
         callerName,
@@ -34,7 +43,7 @@ export default function setupVideoCall(io) {
     
     socket.on("call-accepted", (callerId) => {
       const callerSocket = userSocketMap[callerId];
-
+      busyUsers[socket.userId] = true;
       if (callerSocket) {
         videoIO.to(callerSocket).emit("call-accepted", {
           message: "Call accepted"
@@ -47,6 +56,9 @@ export default function setupVideoCall(io) {
     socket.on("video-call-canceled", (data) => {
       const { receiverId, receiverName, callerName, callerId } = data;
       const receiverSocket = userSocketMap[receiverId];
+      delete busyUsers[receiverId];
+  delete busyUsers[callerId];
+
 
       if (receiverSocket) {
         videoIO.to(receiverSocket).emit("video-call-ended", {
@@ -105,6 +117,7 @@ export default function setupVideoCall(io) {
       for (const [userId, sockId] of Object.entries(userSocketMap)) {
         if (sockId === socket.id) {
           delete userSocketMap[userId];
+          delete busyUsers[userId];
           break;
         }
       }
