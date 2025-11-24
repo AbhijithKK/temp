@@ -14,6 +14,8 @@ import morgan from "morgan";
 import authMiddleware from "./Helpers/AuthMiddleware.js";
 import { configDotenv } from "dotenv";
 import recordingRours from './controlers/recordingController.js'
+import videoCall from './controlers/VideoCallController.js'
+import setupVideoCall from "./Helpers/VideocallSocket.js";
 configDotenv()
 const pendingRequests = new Map();
 const chatHistory = new Map();
@@ -39,6 +41,7 @@ const io = new Server(server, {
   },
   path: "/socket.io", 
 });
+setupVideoCall(io)
 const userSockets = new Map();
 const hostSockets = new Map(); 
 
@@ -48,6 +51,7 @@ app.use(cookieParser());
 app.use(express.urlencoded({ extended: false }));
 app.use(morgan('dev'));
 app.use('/',recordingRours)
+app.use('/api/videocall',videoCall)
 
 mongoose
   .connect(process.env.DATABASE_URL, {
@@ -460,3 +464,5 @@ app.post("/approve-participant", authMiddleware, async (req, res) => {
 });
 
 server.listen(port, () => console.log(`Server running on port ${port}`));
+
+export {io}
