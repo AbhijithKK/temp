@@ -16,6 +16,8 @@ import { configDotenv } from "dotenv";
 import recordingRours from './controlers/recordingController.js'
 import videoCall from './controlers/VideoCallController.js'
 import setupVideoCall from "./Helpers/VideocallSocket.js";
+import voiceCallRoutes from './controlers/voiceCallRoutes.js';
+import setupVoiceCall from "./Helpers/VoiceCallSocket.js";
 configDotenv()
 const pendingRequests = new Map();
 const chatHistory = new Map();
@@ -42,6 +44,7 @@ const io = new Server(server, {
   path: "/socket.io", 
 });
 setupVideoCall(io)
+setupVoiceCall(io)
 const userSockets = new Map();
 const hostSockets = new Map(); 
 
@@ -52,6 +55,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(morgan('dev'));
 app.use('/',recordingRours)
 app.use('/api/videocall',videoCall)
+app.use('/api/voicecall', voiceCallRoutes);
 
 mongoose
   .connect(process.env.DATABASE_URL, {
@@ -385,83 +389,7 @@ console.log(name, meetingId, userId);
   }
 });
 
-app.get("/check-approval", authMiddleware, async (req, res) => {
-  const { meetingId, userId } = req.query;
 
-  try {
-    const meet = await MeetLink.findOne({ linkId: meetingId });
-    if (!meet) {
-      return res.status(404).json({ 
-        approved: false, 
-        message: "Meeting not found" 
-      });
-    }
-
-    if (meet.hostId.toString() === userId.toString()) {
-      return res.json({ approved: true });
-    }
-
-    const requestId = `${meetingId}-${userId}`;
-    const hasPendingRequest = pendingRequests.has(requestId);
-
-    res.json({ approved: !hasPendingRequest });
-
-  } catch (error) {
-    console.error("Error checking approval:", error);
-    res.status(500).json({ 
-      approved: false, 
-      message: "Error checking approval status" 
-    });
-  }
-});
-
-app.get("/pending-requests", authMiddleware, async (req, res) => {
-  const { meetingId } = req.query;
-
-  try {
-    const requests = getPendingRequestsForMeeting(meetingId);
-    res.json({ requests });
-  } catch (error) {
-    console.error("Error getting pending requests:", error);
-    res.status(500).json({ 
-      error: true, 
-      message: "Internal server error" 
-    });
-  }
-});
-
-app.post("/approve-participant", authMiddleware, async (req, res) => {
-  const { requestId } = req.body;
-
-  try {
-    const request = pendingRequests.get(requestId);
-    if (request) {
-      pendingRequests.delete(requestId);
-      
-      const userSocketId = userSockets.get(request.userId);
-      if (userSocketId) {
-        io.to(`user-${request.userId}`).emit("join-approved", { 
-          meetingId: request.meetingId 
-        });
-      }
-
-      io.to(`host-${request.meetingId}`).emit("participant-approved", requestId);
-
-      res.json({ success: true, message: "Participant approved" });
-    } else {
-      res.status(404).json({ 
-        success: false, 
-        message: "Request not found" 
-      });
-    }
-  } catch (error) {
-    console.error("Error approving participant:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Internal server error" 
-    });
-  }
-});
 
 server.listen(port, () => console.log(`Server running on port ${port}`));
 

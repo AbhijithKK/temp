@@ -102,6 +102,7 @@ export default function setupVideoCall(io) {
         socket.emit("user-offline", `${receiverName} is offline`);
         return;
       }
+      busyUsers[receiverId] = true;
 
       videoIO.to(receiverSocket).emit("incoming-video-call", {
         roomName,
