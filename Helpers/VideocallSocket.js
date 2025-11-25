@@ -12,18 +12,28 @@ export default function setupVideoCall(io) {
       console.log("User registered:", userId, socket.id);
     });
 
-    
-    socket.on("initiate-video-call", (data) => {
-      const { roomName, callerId, callerName, receiverId } = data;
-      if (busyUsers[receiverId]) {
-        const callerSocket = userSocketMap[callerId];
-        if (callerSocket) {
-          videoIO.to(callerSocket).emit("user-busy", {
-            message: "User is currently in another call",
+    socket.on("user-busy", (data, callback) => {
+        const {  receiverId } = data;
+        const receiverBusy = !!busyUsers[receiverId];
+  
+        console.log("Busy check:", receiverId, "->", receiverBusy);
+  
+        if (receiverBusy) {
+          callback({
+            busy: true,
+            message: "User is currently in another call"
+          });
+        } else {
+          callback({
+            busy: false,
+            message: "User is free to receive call"
           });
         }
-        return;
-      }
+      });
+
+    socket.on("initiate-video-call", (data) => {
+      const { roomName, callerId, callerName, receiverId } = data;
+      
       const receiverSocket = userSocketMap[receiverId];
 
       if (!receiverSocket) {
@@ -56,7 +66,7 @@ export default function setupVideoCall(io) {
     socket.on("video-call-canceled", (data) => {
       const { receiverId, receiverName, callerName, callerId } = data;
       const receiverSocket = userSocketMap[receiverId];
-      delete busyUsers[receiverId];
+    //   delete busyUsers[receiverId];
   delete busyUsers[callerId];
 
 
