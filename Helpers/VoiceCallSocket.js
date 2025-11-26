@@ -90,10 +90,14 @@ export default function setupVoiceCall(io) {
     });
 
     socket.on("call-rejected-voice", (data) => {
-      const { callerId, receiverName } = data;
+      const { callerId, receiverName ,currentUserId} = data;
       const callerSocket = userSocketMap[callerId];
-
-      delete busyUsers[callerId];
+        console.log(busyUsers[callerId]);
+        
+        busyUsers[callerId]=false
+        busyUsers[currentUserId]=false
+        console.log(busyUsers[callerId],callerId);
+     
 
       if (callerSocket) {
         voiceIO.to(callerSocket).emit("call-rejected-voice", {
